@@ -33,9 +33,9 @@ class ConditionGenerator(nn.Module):
             pose_encoder_input_channels: int,
             output_channels: int,
             n_filters: int = 64,
-            norm_layer: nn.Module = nn.BatchNorm2d,
+            norm_layer: nn.Module = nn.BatchNorm2d, # type: ignore
             warp_feature: str = 'T1',
-            output_layer: str = "relu",
+            output_layer_type: str = "relu",
             ):
         
         super(ConditionGenerator, self).__init__()
@@ -46,41 +46,41 @@ class ConditionGenerator(nn.Module):
         self.n_filters = n_filters
         self.norm_layer = norm_layer
         self.warp_feature = warp_feature
-        self.output_layer = output_layer
+        self.output_layer_type = output_layer_type
 
         self.ClothEncoder = self.get_encoder(cloth_encoder_input_channels, n_filters, norm_layer)
         self.PoseEncoder = self.get_encoder(pose_encoder_input_channels, n_filters, norm_layer)
-        self.conv = ResBlock(in_channels=n_filters*4, out_channels=n_filters*8, norm_layer=norm_layer, type=ResBlockType.SAME)
+        self.conv = ResBlock(in_channels=n_filters*4, out_channels=n_filters*8, norm_layer=norm_layer, resblock_type=ResBlockType.SAME)
 
         self.SegDecoder = self.get_decoder()
-        self.output_layer = self.get_out_layer(out_layer_type=output_layer)
+        self.output_layer = self.get_out_layer(out_layer_type=output_layer_type)
         self.conv1 = self.get_1x1_conv()
         self.conv2 = self.get_1x1_conv()
         self.flow_conv = self.get_flow_conv()
         self.bottleneck = self.get_bottleneck()
 
 
-    def get_encoder(self, input_channels: int, n_filters: int, norm_layer: nn.Module) -> nn.Module:
+    def get_encoder(self, input_channels: int, n_filters: int, norm_layer: nn.Module) -> nn.Sequential:
         """ Encoder, same for cloth and pose """
         return nn.Sequential(
-            ResBlock(in_channels=input_channels, out_channels=n_filters, norm_layer=norm_layer, type=ResBlockType.DOWN),
-            ResBlock(in_channels=n_filters, out_channels=n_filters*2, norm_layer=norm_layer, type=ResBlockType.DOWN),
-            ResBlock(in_channels=n_filters*2, out_channels=n_filters*4, norm_layer=norm_layer, type=ResBlockType.DOWN),
-            ResBlock(in_channels=n_filters*4, out_channels=n_filters*4, norm_layer=norm_layer, type=ResBlockType.DOWN),
-            ResBlock(in_channels=n_filters*4, out_channels=n_filters*4, norm_layer=norm_layer, type=ResBlockType.DOWN),
+            ResBlock(in_channels=input_channels, out_channels=n_filters, norm_layer=norm_layer, resblock_type=ResBlockType.DOWN),
+            ResBlock(in_channels=n_filters, out_channels=n_filters*2, norm_layer=norm_layer, resblock_type=ResBlockType.DOWN),
+            ResBlock(in_channels=n_filters*2, out_channels=n_filters*4, norm_layer=norm_layer, resblock_type=ResBlockType.DOWN),
+            ResBlock(in_channels=n_filters*4, out_channels=n_filters*4, norm_layer=norm_layer, resblock_type=ResBlockType.DOWN),
+            ResBlock(in_channels=n_filters*4, out_channels=n_filters*4, norm_layer=norm_layer, resblock_type=ResBlockType.DOWN),
         )
     
-    def get_decoder(self) -> nn.Module:
+    def get_decoder(self) -> nn.Sequential:
         """ Decoder path"""
         return nn.Sequential(
-            ResBlock(in_channels=self.n_filters*8, out_channels=self.n_filters*4, norm_layer=self.norm_layer, type=ResBlockType.UP),
-            ResBlock(in_channels=self.n_filters*4*3, out_channels=self.n_filters*4, norm_layer=self.norm_layer, type=ResBlockType.UP),
-            ResBlock(in_channels=self.n_filters*4*3, out_channels=self.n_filters*2, norm_layer=self.norm_layer, type=ResBlockType.UP),
-            ResBlock(in_channels=self.n_filters*2*3, out_channels=self.n_filters, norm_layer=self.norm_layer, type=ResBlockType.UP),
-            ResBlock(in_channels=self.n_filters*1*3, out_channels=self.output_channels, norm_layer=self.norm_layer, type=ResBlockType.UP),
+            ResBlock(in_channels=self.n_filters*8, out_channels=self.n_filters*4, norm_layer=self.norm_layer, resblock_type=ResBlockType.UP),
+            ResBlock(in_channels=self.n_filters*4*3, out_channels=self.n_filters*4, norm_layer=self.norm_layer, resblock_type=ResBlockType.UP),
+            ResBlock(in_channels=self.n_filters*4*3, out_channels=self.n_filters*2, norm_layer=self.norm_layer, resblock_type=ResBlockType.UP),
+            ResBlock(in_channels=self.n_filters*2*3, out_channels=self.n_filters, norm_layer=self.norm_layer, resblock_type=ResBlockType.UP),
+            ResBlock(in_channels=self.n_filters*1*3, out_channels=self.output_channels, norm_layer=self.norm_layer, resblock_type=ResBlockType.UP),
         )
     
-    def get_1x1_conv(self) -> nn.Module:
+    def get_1x1_conv(self) -> nn.Sequential:
         return nn.Sequential(
             nn.Conv2d(in_channels=self.n_filters, out_channels=self.n_filters*4, kernel_size=1, bias=True),
             nn.Conv2d(in_channels=self.n_filters*2, out_channels=self.n_filters*4, kernel_size=1, bias=True),
@@ -97,7 +97,7 @@ class ConditionGenerator(nn.Module):
             nn.Conv2d(in_channels=self.n_filters*8, out_channels=2, kernel_size=3, bias=True, padding=1),
         ])
 
-    def get_bottleneck(self) -> nn.Module:
+    def get_bottleneck(self) -> nn.Sequential:
         return nn.Sequential(
             nn.Sequential(
                 nn.Conv2d(in_channels=self.n_filters*4, out_channels=self.n_filters*4, kernel_size=3, stride=1, padding=1, bias=True),
@@ -122,20 +122,22 @@ class ConditionGenerator(nn.Module):
         if out_layer_type == "relu":
             return ResBlock(
                 in_channels = self.n_filters + self.cloth_encoder_input_channels + self.pose_encoder_input_channels,
-                output_channels = self.output_channels,
+                out_channels = self.output_channels,
                 norm_layer=self.norm_layer,
-                type=ResBlockType.SAME
+                resblock_type=ResBlockType.SAME
             )
         elif out_layer_type == "conv":
             return nn.Sequential(
                 ResBlock(
                 in_channels=self.n_filters + self.cloth_encoder_input_channels + self.pose_encoder_input_channels,
-                output_channels=self.n_filters,
+                out_channels=self.n_filters,
                 norm_layer=self.norm_layer,
-                type=ResBlockType.SAME
+                resblock_type=ResBlockType.SAME
                 ),
                 nn.Conv2d(self.n_filters, self.output_channels, kernel_size=1, bias=True)
             )
+        else:
+            raise NotImplementedError(f"out_layer_type {out_layer_type} not implemented")
     
     def normalize(self, x: torch.Tensor) -> torch.Tensor:
         return x # TODO: implement
@@ -145,11 +147,11 @@ class ConditionGenerator(nn.Module):
             cloth_encoder_input: torch.Tensor,
             pose_encoder_input: torch.Tensor,
             upsample_method: str = "bilinear",
-            ) -> torch.Tensor:
+            ) -> tuple[list[torch.Tensor], torch.Tensor, torch.Tensor, torch.Tensor]:
         
-        Ec_list: List[torch.Tensor] = []
-        Es_list: List[torch.Tensor] = []
-        Ff_list: List[torch.Tensor] = []
+        Ec_list: list[torch.Tensor] = []
+        Es_list: list[torch.Tensor] = []
+        Ff_list: list[torch.Tensor] = []
 
         # feature pyramid network
         for i in range(5):
@@ -182,11 +184,11 @@ class ConditionGenerator(nn.Module):
                 Esf = self.SegDecoder[i](Esf)
             else: # fusion blocks
                 # upsample cloth and 
-                upscaled_Eci = nn.functional.interpolate(Eci, scale_factor=2, mode=upsample_method)
+                upscaled_Eci = nn.functional.interpolate(Eci, scale_factor=2, mode=upsample_method) # type: ignore
                 Eci = self.conv1[4-i](Ec_list[4-i]) + upscaled_Eci
                 
                 # this shoudln't be used tbh but okay
-                upscaled_Esi = nn.functional.interpolate(Esi, scale_factor=2, mode=upsample_method)
+                upscaled_Esi = nn.functional.interpolate(Esi, scale_factor=2, mode=upsample_method) # type: ignore
                 Esi = self.conv2[4-i](Es_list[4-i]) + upscaled_Esi
 
                 # flow feature
@@ -198,15 +200,15 @@ class ConditionGenerator(nn.Module):
                 warped_Eci = nn.functional.grid_sample(Eci, grid + normalized_flow, padding_mode="border")
 
                 # concatenating warped Eci and bottleneck
-                E_concat = self.normalize(torch.cat([warped_Eci, self.bottleneck[i-1][Esf]], 1)).permute(0, 2, 3, 1)
+                E_concat = self.normalize(torch.cat([warped_Eci, self.bottleneck[i-1](Esf)], 1)).permute(0, 2, 3, 1) # type: ignore
                 flow = flow + self.flow_conv[i](E_concat)
                 Ff_list.append(flow)
 
                 if self.warp_feature == "T1":
-                    Esf = self.SegDecoder[i](torch.cat([Esf, Es_list[4-i], warped_Eci], 1))
+                    Esf = self.SegDecoder[i](torch.cat([Esf, Es_list[4-i], warped_Eci], 1)) # type: ignore
                 if self.warp_feature == "encoder":
                     warped_Eci = nn.functional.grid_sample(Ec_list[4-i], normalized_flow + grid, padding_mode="border")
-                    Esf = self.SegDecoder[i](torch.cat([Esf, Es_list[4-i], warped_Eci], 1))
+                    Esf = self.SegDecoder[i](torch.cat([Esf, Es_list[4-i], warped_Eci], 1)) # type: ignore
 
         # output
         N, _, iH, iW = cloth_encoder_input.shape
@@ -217,7 +219,7 @@ class ConditionGenerator(nn.Module):
             flow[:, :, :, 1:2] / ((iH / 2 - 1)/ 2.0),
         ], dim=3)
         warped_cloth = nn.functional.grid_sample(cloth_encoder_input, grid + normalized_flow, padding_mode="border")
-        Esf = self.output_layer(torch.cat([Esf, pose_encoder_input, warped_cloth], 1))
+        Esf = self.output_layer(torch.cat([Esf, pose_encoder_input, warped_cloth], 1)) # type: ignore
 
         warped_c = warped_cloth[:, :-1, :, :]
         warped_cm = warped_cloth[:, -1:, :, :]
