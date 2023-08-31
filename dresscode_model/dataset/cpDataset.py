@@ -23,7 +23,6 @@ class CpDataset(data.Dataset):
             fine_width: int = 768,
             semantic_nc: int = 13,
     ):
-        
         self.root = Path(root)
         self.data_mode = data_mode
         self.data_list = data_list
@@ -266,3 +265,47 @@ class CpDataset(data.Dataset):
 
     def __len__(self):
         return len(self.im_names_lst)
+    
+class CPDataLoader:
+    def __init__(
+            self,
+            dataset: CpDataset,
+            shuffle: bool = True,
+            batch_size: int = 4,
+            num_workers: int = 4,
+            pin_memory: bool = True,
+    ):
+        self.shuffle = shuffle
+        self.batch_size = batch_size
+        self.num_workers = num_workers
+        self.pin_memory = pin_memory
+        self.dataset = dataset
+
+        if self.shuffle:
+            self.sampler = data.RandomSampler(dataset)
+        else:
+            self.sampler = None
+        
+        self.data_loader = data.DataLoader(
+            dataset=dataset,
+            batch_size=self.batch_size,
+            shuffle=(self.sampler is None),
+            num_workers=self.num_workers,
+            pin_memory=self.pin_memory,
+            drop_last=True,
+            sampler=self.sampler,
+        )
+        self.data_iter = self.data_loader.__iter__()
+
+    def __len__(self):
+        return len(self.data_loader)
+    
+    def next_batch(self):
+        try:
+            batch = next(self.data_iter)
+        except StopIteration:
+            self.data_iter = self.data_loader.__iter__()
+            batch = next(self.data_iter)
+        return batch
+    
+
