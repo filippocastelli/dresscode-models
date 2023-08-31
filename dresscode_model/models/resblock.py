@@ -16,13 +16,13 @@ class ResBlock(nn.Module):
             self,
             in_channels: int,
             out_channels: int,
-            type: ResBlockType = ResBlockType.DOWN,
-            norm_layer: nn.Module = nn.BatchNorm2d,
+            resblock_type: ResBlockType = ResBlockType.DOWN,
+            norm_layer: nn.Module = nn.BatchNorm2d, # type: ignore
             ):
-        
+    
         self.in_channels = in_channels
         self.out_channels = out_channels
-        self.type = type
+        self.resblock_type = resblock_type
         self.norm_layer = norm_layer
         
         super(ResBlock, self).__init__()
@@ -34,15 +34,17 @@ class ResBlock(nn.Module):
     
 
     def get_residual_link(self) -> nn.Module:
-        if self.type == ResBlockType.SAME:
+        if self.resblock_type == ResBlockType.SAME:
             return nn.Conv2d(self.in_channels, self.out_channels, kernel_size=1, bias=True)
-        elif self.type == ResBlockType.UP:
+        elif self.resblock_type == ResBlockType.UP:
             return nn.Sequential(
                 nn.Upsample(scale_factor=2, mode='bilinear'),
                 nn.Conv2d(self.in_channels, self.out_channels, kernel_size=1, bias=True)
             )
-        elif self.type == ResBlockType.DOWN:
+        elif self.resblock_type == ResBlockType.DOWN:
             return nn.Conv2d(self.in_channels, self.out_channels, kernel_size=3, stride=2, padding=1, bias=self.using_bias)
+        else:
+            raise NotImplementedError(f"ResBlockType {self.resblock_type} not implemented")
     
     def get_convolutional_block(self) -> nn.Module:
         return nn.Sequential(
