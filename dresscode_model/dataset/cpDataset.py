@@ -5,6 +5,7 @@ from typing import List, Tuple, Union, Dict, Any
 import torch
 import torch.utils.data as data
 import torchvision.transforms as transforms
+from torchvision.transforms import InterpolationMode
 
 from PIL import Image, ImageDraw
 import numpy as np
@@ -60,10 +61,10 @@ class CpDataset(data.Dataset):
     
     def get_agnostic(
             self,
-            im: Image,
-            im_parse: Image,
+            im: Image.Image,
+            im_parse: Image.Image,
             pose_data: np.ndarray
-    ) -> Image:
+    ) -> Image.Image:
         
         parse_array = np.array(im_parse)
 
@@ -110,7 +111,7 @@ class CpDataset(data.Dataset):
 
         for parse_id, pose_ids in [(14, [5, 6, 7]), (15, [2, 3, 4])]:
             # mask_arm = Image.new('L', (self.fine_width, self.fine_height), 'white')
-            mask_arm = Image.new('L', (768, 1024), 'white')
+            mask_arm = Image.new(mode='L', size=(768, 1024), color='white')
             mask_arm_draw = ImageDraw.Draw(mask_arm)
             pointx, pointy = pose_data[pose_ids[0]]
             mask_arm_draw.ellipse((pointx-r*5, pointy-r*6, pointx+r*5, pointy+r*6), 'black', 'black')
@@ -138,19 +139,23 @@ class CpDataset(data.Dataset):
         cloth_dict = {}
         cloth_mask_dict = {}
 
+        # avoid unbouded cloth_img and cloth_mask
+        cloth_img = None
+        cloth_mask = None
+
         for key in self.c_keys:
             cloth_name[key] = self.c_names[key][index]
 
             cloth_img_path = self.data_path / "cloth" / cloth_name[key]
             cloth_img = Image.open(cloth_img_path).convert("RGB")
-            cloth_img = transforms.Resize(self.fine_width, interpolation=2)(cloth_img)
+            cloth_img = transforms.Resize(self.fine_width, interpolation=InterpolationMode.BILINEAR)(cloth_img)
             cloth_img = self.transform(cloth_img)
             cloth_dict[key] = cloth_img
 
             # binary image
             cloth_mask_path = self.data_path / "cloth-mask" / cloth_name[key]
             cloth_mask = Image.open(cloth_mask_path)
-            cloth_mask = transforms.Resize(self.fine_width, interpolation=0)(cloth_mask)
+            cloth_mask = transforms.Resize(self.fine_width, interpolation=InterpolationMode.NEAREST)(cloth_mask)
             cloth_mask = (np.array(cloth_mask) >= 128).astype(np.float32)
             cloth_mask = torch.from_numpy(cloth_mask).unsqueeze(0)
             cloth_mask_dict[key] = cloth_mask
@@ -158,13 +163,13 @@ class CpDataset(data.Dataset):
         # person image
         im_pil_path = self.data_path / im_name
         im_pil_large = Image.open(im_pil_path)
-        im_pil = transforms.Resize(self.fine_width, interpolation=2)(im_pil_large)
+        im_pil = transforms.Resize(self.fine_width, interpolation=InterpolationMode.BILINEAR)(im_pil_large)
         im = self.transform(im_pil)
 
         # load parsing images
         parse_name = im_name.replace("image", "image-parse-v3").replace(".jpg", ".png")
         im_parse_pil_large = Image.open(self.data_path.joinpath(parse_name))
-        im_parse_pil = transforms.Resize(self.fine_width, interpolation=0)(im_parse_pil_large)
+        im_parse_pil = transforms.Resize(self.fine_width, interpolation=InterpolationMode.NEAREST)(im_parse_pil_large)
         parse = torch.from_numpy(np.array(im_parse_pil)[None]).long()
 
         # parse map
@@ -199,7 +204,7 @@ class CpDataset(data.Dataset):
 
         # load image-parse-agnostic
         image_parse_agnostic = Image.open(self.data_path.joinpath(parse_name.replace('image-parse-v3', 'image-parse-agnostic-v3.2')))
-        image_parse_agnostic = transforms.Resize(self.fine_width, interpolation=0)(image_parse_agnostic)
+        image_parse_agnostic = transforms.Resize(self.fine_width, interpolation=InterpolationMode.NEAREST)(image_parse_agnostic)
         parse_agnostic = torch.from_numpy(np.array(image_parse_agnostic)[None]).long()
         image_parse_agnostic = self.transform(image_parse_agnostic.convert('RGB'))
 
@@ -218,7 +223,7 @@ class CpDataset(data.Dataset):
         # load pose points 
         pose_name = im_name.replace("image", "openpose_img").replace(".jpg", "_rendered.png")
         pose_map = Image.open(self.data_path.joinpath(pose_name))
-        pose_map = transforms.Resize(self.fine_width, interpolation=2)(pose_map)
+        pose_map = transforms.Resize(self.fine_width, interpolation=InterpolationMode.BILINEAR)(pose_map)
         pose_map = self.transform(pose_map)
 
         # pose name
@@ -232,12 +237,12 @@ class CpDataset(data.Dataset):
         # load densepose
         densepose_name = im_name.replace("image", "image-densepose")
         densepose_map = Image.open(self.data_path.joinpath(densepose_name))
-        densepose_map = transforms.Resize(self.fine_width, interpolation=2)(densepose_map)
+        densepose_map = transforms.Resize(self.fine_width, interpolation=InterpolationMode.BILINEAR)(densepose_map)
         densepose_map = self.transform(densepose_map)
 
         # agnostic
         agnostic = self.get_agnostic(im_pil_large, im_parse_pil_large, pose_data)
-        agnostic = transforms.Resize(self.fine_width, interpolation=2)(agnostic)
+        agnostic = transforms.Resize(self.fine_width, interpolation=InterpolationMode.BILINEAR)(agnostic)
         agnostic = self.transform(agnostic)
 
         result = {
